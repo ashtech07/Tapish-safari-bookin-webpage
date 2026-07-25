@@ -166,8 +166,34 @@ async function connectToMongoDB() {
 }
 
 // ============ MIDDLEWARE ============
-function setAdminCookie(res) {
-  res.cookie(ADMIN_COOKIE_NAME, ADMIN_PIN, {
+// In-memory admin session store: opaque token -> expiry timestamp.
+// The cookie carries a random token, never the PIN itself, so a leaked
+// cookie doesn't hand over the permanent shared secret. Logout deletes the
+// server-side entry, so a captured old cookie stops working immediately.
+const adminSessions = new Map();
+
+function createAdminSession() {
+  const token = crypto.randomBytes(32).toString('hex');
+  adminSessions.set(token, Date.now() + ADMIN_COOKIE_MAX_AGE_MS);
+  return token;
+}
+
+function touchAdminSession(token) {
+  const expiresAt = adminSessions.get(token);
+  if (!expiresAt || expiresAt < Date.now()) {
+    adminSessions.delete(token);
+    return false;
+  }
+  adminSessions.set(token, Date.now() + ADMIN_COOKIE_MAX_AGE_MS);
+  return true;
+}
+
+function destroyAdminSession(token) {
+  adminSessions.delete(token);
+}
+
+function setAdminCookie(res, token) {
+  res.cookie(ADMIN_COOKIE_NAME, token, {
     httpOnly: true,
     secure: true,
     sameSite: 'strict',
@@ -177,12 +203,12 @@ function setAdminCookie(res) {
 }
 
 function requireAdmin(req, res, next) {
-  const adminToken = req.cookies ? req.cookies[ADMIN_COOKIE_NAME] : undefined;
-  if (!adminToken || !pinsMatch(adminToken, ADMIN_PIN)) {
+  const token = req.cookies ? req.cookies[ADMIN_COOKIE_NAME] : undefined;
+  if (!token || !touchAdminSession(token)) {
     return res.status(401).json({ detail: 'Unauthorized' });
   }
   // Sliding session: refresh cookie expiry on every authenticated request.
-  setAdminCookie(res);
+  setAdminCookie(res, token);
   next();
 }
 
@@ -365,7 +391,8 @@ app.post('/api/admin/login', adminLoginLimiter, validateBody(AdminLoginSchema), 
   try {
     const { pin } = req.body;
     if (pinsMatch(pin, ADMIN_PIN)) {
-      setAdminCookie(res);
+      const token = createAdminSession();
+      setAdminCookie(res, token);
       return res.json({ ok: true });
     }
     res.status(401).json({ detail: 'Incorrect PIN' });
@@ -376,6 +403,8 @@ app.post('/api/admin/login', adminLoginLimiter, validateBody(AdminLoginSchema), 
 });
 
 app.post('/api/admin/logout', (req, res) => {
+  const token = req.cookies ? req.cookies[ADMIN_COOKIE_NAME] : undefined;
+  if (token) destroyAdminSession(token);
   res.clearCookie(ADMIN_COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'strict', path: '/' });
   res.json({ ok: true });
 });

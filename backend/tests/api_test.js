@@ -100,6 +100,28 @@ async function run() {
     return sc;
   });
 
+  // NEW (iteration 3): cookie value must be an opaque random token, NOT the PIN.
+  await check('Admin cookie value is an opaque random token (not the ADMIN_PIN)', async () => {
+    const value = cookieJar.split('=')[1] || '';
+    assert(value !== ADMIN_PIN, `cookie value IS the raw ADMIN_PIN: ${value}`);
+    assert(!value.includes(ADMIN_PIN), `cookie value contains the ADMIN_PIN: ${value}`);
+    assert(/^[0-9a-f]{32,}$/i.test(value), `cookie value is not a long random hex token: ${value}`);
+    return `len=${value.length}`;
+  });
+
+  await check('Two logins issue different opaque tokens', async () => {
+    const r = await req('POST', `${API}/admin/login`, { body: { pin: ADMIN_PIN } });
+    assert(r.status === 200, `status ${r.status} body ${r.text}`);
+    const other = (r.headers.get('set-cookie') || '').split(';')[0];
+    assert(other && other !== cookieJar, `tokens identical across logins: ${other}`);
+    return 'distinct tokens';
+  });
+
+  await check('Raw ADMIN_PIN as cookie value is rejected -> 401', async () => {
+    const r = await req('GET', `${API}/admin/session`, { headers: { Cookie: `rtc_admin_token=${ADMIN_PIN}` } });
+    assert(r.status === 401, `status ${r.status} (PIN-as-cookie still authenticates!)`);
+  });
+
   await check('GET /api/admin/session with cookie -> 200 {ok:true} and slides cookie', async () => {
     const r = await req('GET', `${API}/admin/session`, { useCookie: true });
     assert(r.status === 200, `status ${r.status}`);
@@ -178,11 +200,42 @@ async function run() {
     return sc;
   });
 
-  await check('GET /api/admin/session after logout with old cookie value', async () => {
-    // The old cookie string is still a valid credential unless server-side
-    // invalidation exists — documents current behaviour.
+  await check('Replaying the OLD cookie after logout -> 401 (server-side invalidation)', async () => {
     const r = await req('GET', `${API}/admin/session`, { useCookie: true });
-    return `status ${r.status} (browser would have discarded the cookie)`;
+    assert(r.status === 401, `status ${r.status} - old cookie still authenticates after logout`);
+  });
+
+  await check('Old cookie also rejected on a data endpoint after logout -> 401', async () => {
+    const r = await req('GET', `${API}/admin/bookings`, { useCookie: true });
+    assert(r.status === 401, `status ${r.status}`);
+  });
+
+  // ---------------- CORS allowlist (hit Express directly, bypass ingress) ----------------
+  const DIRECT = 'http://localhost:8001/api';
+  await check('CORS: attacker origin is NOT reflected (direct to Express)', async () => {
+    const r = await req('GET', `${DIRECT}/`, { headers: { Origin: 'https://evil.example.com' } });
+    const acao = r.headers.get('access-control-allow-origin');
+    assert(acao !== 'https://evil.example.com', `attacker origin reflected: ${acao}`);
+    assert(acao !== '*', `wildcard ACAO with credentials: ${acao}`);
+    return `ACAO=${acao}`;
+  });
+
+  await check('CORS: configured origin IS allowed with credentials (direct to Express)', async () => {
+    const r = await req('GET', `${DIRECT}/`, { headers: { Origin: BASE_URL } });
+    const acao = r.headers.get('access-control-allow-origin');
+    const acac = r.headers.get('access-control-allow-credentials');
+    assert(acao === BASE_URL, `expected ${BASE_URL}, got ${acao}`);
+    assert(acac === 'true', `allow-credentials=${acac}`);
+    return `ACAO=${acao}`;
+  });
+
+  await check('CORS: preflight from attacker origin not approved (direct to Express)', async () => {
+    const r = await req('OPTIONS', `${DIRECT}/admin/login`, {
+      headers: { Origin: 'https://evil.example.com', 'Access-Control-Request-Method': 'POST' }
+    });
+    const acao = r.headers.get('access-control-allow-origin');
+    assert(acao !== 'https://evil.example.com' && acao !== '*', `preflight reflected: ${acao}`);
+    return `status ${r.status} ACAO=${acao}`;
   });
 
   // ---------------- No Python in backend ----------------

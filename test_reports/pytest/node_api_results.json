@@ -57,7 +57,22 @@
   {
     "name": "POST /api/admin/login sets HttpOnly+Secure+SameSite=Strict cookie, no token in body",
     "ok": true,
-    "detail": "rtc_admin_token=73921846; Max-Age=7200; Path=/; Expires=Sat, 25 Jul 2026 12:17:25 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=ks9bwJTxSg02uko6rkm2TDcYAa1.XUO3qkSwrWfcxXc-1784974645.62814-1.0.1.1-fq28THefZbE.tfZaRgn_YFMXhJtOO6dVWvrWmflodRxSKuDdMYuoBAk5FY.BMhNaoYmQ3uxDxo9wNHKwL1gz_AkQ5bKu0qs9WUtU_qvHg1CrHgwprRLdXtdQQk6g_9zj; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:47:25 GMT"
+    "detail": "rtc_admin_token=63ad7107a2ca5126b409793a0ee3c0a8baff132c119989e40efd742adb1b9de1; Max-Age=7200; Path=/; Expires=Sat, 25 Jul 2026 12:25:02 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=2cY4H2bufHvqm9Xijz95Rigys7Gi4d_1EiSye9XN5uU-1784975102.5115008-1.0.1.1-6PXKtaXUw.MqoBGUwV9KonAySzXVocU3RGP3cBKcb7kgzoOk04QIHXGW8sBKFoOj4yHruuaoerz4vSLfH5M1_K34DjAXvazyF6abW52ZfE77i.VxHYZ7mHTz9XIG6KSj; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:55:02 GMT"
+  },
+  {
+    "name": "Admin cookie value is an opaque random token (not the ADMIN_PIN)",
+    "ok": true,
+    "detail": "len=64"
+  },
+  {
+    "name": "Two logins issue different opaque tokens",
+    "ok": true,
+    "detail": "distinct tokens"
+  },
+  {
+    "name": "Raw ADMIN_PIN as cookie value is rejected -> 401",
+    "ok": true,
+    "detail": ""
   },
   {
     "name": "GET /api/admin/session with cookie -> 200 {ok:true} and slides cookie",
@@ -72,12 +87,12 @@
   {
     "name": "GET /admin/bookings with cookie -> 200",
     "ok": true,
-    "detail": "5 rows"
+    "detail": "7 rows"
   },
   {
     "name": "GET /admin/inquiries with cookie -> 200",
     "ok": true,
-    "detail": "11 rows"
+    "detail": "13 rows"
   },
   {
     "name": "GET /admin/reviews with cookie -> 200",
@@ -97,7 +112,7 @@
   {
     "name": "POST /api/bookings (public) -> 200 with booking_ref",
     "ok": true,
-    "detail": "RTC-2026-64460"
+    "detail": "RTC-2026-86137"
   },
   {
     "name": "New booking is visible in GET /api/admin/bookings",
@@ -107,7 +122,7 @@
   {
     "name": "POST /api/inquiries (public) -> success",
     "ok": true,
-    "detail": "{\"id\":\"e6c5f8e1-2b5a-4060-ab7d-51de5a464081\",\"created_at\":\"2026-07-25T10:17:26.106Z\",\"type\":\"contact\",\"name\":\"TEST_QA Co"
+    "detail": "{\"id\":\"b175c8fb-e7ed-462e-ade7-1dbcfd3fb542\",\"created_at\":\"2026-07-25T10:25:03.070Z\",\"type\":\"contact\",\"name\":\"TEST_QA Co"
   },
   {
     "name": "POST /api/bookings validation error -> 422",
@@ -132,12 +147,32 @@
   {
     "name": "POST /api/admin/logout clears cookie",
     "ok": true,
-    "detail": "rtc_admin_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=IjPgWn.kIWMhBxz2YIEk8YjPaDpzu5b5qgfTXix9AbY-1784974646.3048725-1.0.1.1-a3G.ZcfFGOuiZdJxyM4dGYroXBkPGTKAwyFkdc4DXWIayrBvG.jEl1IbyaY5tX6H4Evtxv0SwVHhHl20mKVqPAh.994HkS9mTo0z.3W1w6QsPtcYGpP67n887NST4Vh7; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:47:26 GMT"
+    "detail": "rtc_admin_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=dGw5KXl2CdewCAIv0qQMLrkJDqu9CwLkzVGjaHFPth0-1784975103.3074305-1.0.1.1-egGiDt8biMJ9gIassDjO5bhr8RxU58c.CclkyMv2YtOq8r.HYKciX_GbyFxLBsThn6BfwKSHUp_YEwg2vf3V9gBR6E8Df23eDgdIdgrNVeJpXjR9r2HEkVuBF.4ll2V1; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:55:03 GMT"
   },
   {
-    "name": "GET /api/admin/session after logout with old cookie value",
+    "name": "Replaying the OLD cookie after logout -> 401 (server-side invalidation)",
     "ok": true,
-    "detail": "status 200 (browser would have discarded the cookie)"
+    "detail": ""
+  },
+  {
+    "name": "Old cookie also rejected on a data endpoint after logout -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "CORS: attacker origin is NOT reflected (direct to Express)",
+    "ok": true,
+    "detail": "ACAO=null"
+  },
+  {
+    "name": "CORS: configured origin IS allowed with credentials (direct to Express)",
+    "ok": true,
+    "detail": "ACAO=https://curator-admin-alerts.preview.emergentagent.com"
+  },
+  {
+    "name": "CORS: preflight from attacker origin not approved (direct to Express)",
+    "ok": true,
+    "detail": "status 204 ACAO=null"
   },
   {
     "name": "No .py files under /app/backend",

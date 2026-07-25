@@ -39,7 +39,7 @@ export default function Contact() {
                 <Icon className="w-6 h-6" />
               </div>
               <div className="text-xs uppercase tracking-widest text-stone-500">{label}</div>
-              <div className="mt-1 text-sm font-semibold">{value}</div>
+              <div className="mt-1 text-sm font-semibold break-all">{value}</div>
               <div className="text-xs text-stone-500 mt-1">{sub}</div>
             </div>
           ))}

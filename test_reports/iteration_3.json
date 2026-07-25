@@ -1,0 +1,31 @@
+{
+  "summary": "Focused re-test of the 4 items from iteration_2 (opaque session token, server-side logout invalidation, CRA 401 overlay crash, CORS allowlist, Contact email truncation) plus light sanity regression. Backend: extended /app/backend/tests/api_test.js from 29 to 36 checks - ALL 36 PASS. Verified independently: Set-Cookie rtc_admin_token is a 64-char random hex token (not '73921846'), two logins issue different tokens, sending the raw ADMIN_PIN as the cookie value returns 401, and replaying the pre-logout cookie against both /api/admin/session and /api/admin/bookings after POST /api/admin/logout returns 401 (true server-side invalidation). CORS tested directly against Express on localhost:8001 (bypassing the ingress/CDN): Origin https://evil.example.com gets NO Access-Control-Allow-Origin (null) on both a simple GET and an OPTIONS preflight, while Origin https://curator-admin-alerts.preview.emergentagent.com is reflected exactly with Access-Control-Allow-Credentials: true - allowlist confirmed, no wildcard echo. Frontend: login -> overview -> all 7 admin pages (Overview, Bookings, Inquiries, Reviews, Image Manager at /admin/image-manager, Hotels, Live Feed) load with data and zero CRA overlays; after logout, direct navigation to /admin/overview AND the browser back button both land cleanly on the /admin login card with the PIN input visible and NO 'Uncaught runtime errors' overlay and no pageerror events. Contact EMAIL card (contact-card-2) now shows the full 'theranthambhorecurator@gmail.com' with word-break:break-all, scrollWidth == clientWidth (166px) i.e. no clipping. FAQ accordion renders 12 questions, expands on click, FAQPage JSON-LD still parses with all 12 Q&A. Public POST /api/bookings (RTC-2026-86137) and POST /api/inquiries still succeed. Zero .py files anywhere under /app; backend still node server.js.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "adminSessions (server.js:173)", "issue": "The session store is an in-process Map, so every backend restart/deploy silently logs out all admins, and it cannot work across more than one Node instance. Acceptable for this single-instance preview, but persist sessions in Mongo (with a TTL index) before horizontal scaling. There is also no eviction sweep - expired entries only get removed when that exact token is used again, so the Map grows unboundedly with abandoned sessions."},
+      {"endpoint": "POST /api/admin/login rate limiter", "issue": "Unchanged from iteration_2: server allows 10 attempts / 15 min per IP while the UI locks out after 3 / 10 min; behind a shared NAT the admin can be 429'd by unrelated traffic and the UI shows 'Incorrect PIN' rather than a rate-limit message."},
+      {"endpoint": "POST /api/bookings, POST /api/inquiries (utils/telegram.js)", "issue": "Pre-existing / out of scope as flagged by the main agent: backend.err.log still logs 'Telegram notification failed (400): Bad Request: chat not found' on every submission. Confirmed NON-blocking - both endpoints still return success."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/api_test.js", "/app/test_reports/pytest/node_api_results.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.js:175-193 - opaque token + destroyAdminSession on logout is the right fix and works; consider moving adminSessions to a Mongo collection with a TTL index so restarts and multi-instance deploys don't drop sessions, and add a periodic sweep for expired tokens.",
+    "lib/api.js:19-21 - the 401 interceptor returns a never-resolving promise; it works (no overlay, no unhandled rejection), but callers keep their loading spinner forever until window.location.href completes the navigation. Acceptable, just be aware nothing after that point in the component ever runs.",
+    "server.js is still ~814 lines with all routes + zod schemas inline - exceeds the 700-line guideline; split into routes/ and schemas/."
+  ],
+  "updated_files": ["/app/backend/tests/api_test.js (extended: opaque-token assertions, distinct-token-per-login, PIN-as-cookie rejected, old-cookie-replay-after-logout 401 on 2 endpoints, 3 direct-to-Express CORS allowlist checks; 29 -> 36 checks)"],
+  "success_rate": {"backend": "100% (36/36 automated checks)", "frontend": "100% (all targeted regressions and sanity flows pass)"},
+  "seed_data_creation": "TEST_-prefixed rows via the API suite: booking RTC-2026-86137 (TEST_QA Cookie) and one TEST_QA contact inquiry. No delete endpoint exists so they persist and inflate admin counters.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Admin PIN 73921846 (from /app/memory/test_credentials.md). That file still documents the obsolete X-Admin-Pin header flow - update it to POST /api/admin/login + httpOnly rtc_admin_token opaque-token cookie.",
+  "context_for_next_testing_agent": "Run `node /app/backend/tests/api_test.js` (36 checks, writes /app/test_reports/pytest/node_api_results.json). Do NOT add Python files - the stack is intentionally 100% Node. Login is rate limited to 10 attempts / 15 min per IP and the suite spends 4 per run, so back-to-back runs plus UI logins can hit 429. Admin Image Manager route is /admin/image-manager (NOT /admin/images - that falls through to the NotFound page). CORS must be tested against http://localhost:8001 directly; the public ingress/CDN rewrites CORS headers. All 4 iteration_2 defects are now verified fixed; only the in-memory session store, the rate-limit mismatch and the environmental Telegram chat-id error remain open.",
+  "rca_of_the_issue": "No new defects found. Prior CRA overlay RCA is resolved by the axios response interceptor in lib/api.js swallowing admin 401s and redirecting to /admin; prior PIN-as-cookie RCA is resolved by crypto.randomBytes(32) tokens held in a server-side Map that logout deletes."
+}
