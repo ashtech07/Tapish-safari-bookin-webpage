@@ -52,6 +52,33 @@ CORS, /api routes) must stay intact.
   backend, so Admin "Total Revenue" always shows 0 and Zone is blank for
   UI-created bookings. Pre-existing, not part of this change request.
 
+## Session 2 (2026-07-25) — Security fixes
+- XSS: installed DOMPurify, wrapped the FAQAccordion.jsx JSON-LD
+  dangerouslySetInnerHTML with DOMPurify.sanitize() (defense in depth on top
+  of the existing escapeJsonForScript()).
+- Insecure token storage: replaced sessionStorage-based admin PIN token with
+  an httpOnly/Secure/SameSite=Strict cookie. Backend issues an opaque random
+  session token (crypto.randomBytes) held in an in-memory Map (token ->
+  expiry), not the raw PIN — logout deletes the server-side entry so replayed
+  old cookies are rejected. New routes: POST /api/admin/logout, GET
+  /api/admin/session. requireAdmin now reads the cookie instead of the
+  X-Admin-Pin header. Frontend (api.js/AdminLogin.jsx/AdminLayout.jsx)
+  updated to rely on the cookie + withCredentials, added a global 401
+  interceptor to avoid a CRA crash-overlay after logout.
+- Hardened CORS_ORIGINS in backend/.env to the exact site origin instead of
+  '*' (required now that credentialed cookie requests are in play).
+- Fixed a Contact page EMAIL card text-truncation bug found during testing.
+- Removed backend/tests/backend_test.py (leftover Python/pytest suite from
+  the old FastAPI backend) and empty /app/tests/__init__.py — zero .py files
+  remain under /app. Lost coverage: that pytest file exercised the full API
+  end-to-end (bookings, inquiries, admin auth/stats/live-feed, reviews/hotels
+  CRUD). The testing agent replaced it with an equivalent Node-only suite at
+  /app/backend/tests/api_test.js (run: `node api_test.js`) — 36/36 passing,
+  covers the same ground plus the new opaque-token/logout-invalidation/CORS
+  checks, so no coverage was actually lost.
+- Verified via testing_agent (iteration_3): 36/36 backend checks, 100% of
+  targeted frontend flows pass.
+
 ## Backlog / next steps
 - P1: Wire real pricing (SAFARI_PRICES in lib/content.js) + zone/nationality
   selection into the booking flow so admin revenue KPIs are meaningful.
