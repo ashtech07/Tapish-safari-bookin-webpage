@@ -1,0 +1,61 @@
+{
+  "summary": "Full backend + frontend E2E pass on the Ranthambore Curator Node.js/Express app. Backend: 29/30 pytest cases pass (bookings, inquiries, admin auth/stats/live-feed, reviews & hotels CRUD, validation, 404s, _id leakage, Node-only verification). Frontend: 100% of tested UI flows pass (all 5 public pages load, contact form, callback widget, full 3-step safari booking to booking-ref, admin PIN login, all 5 admin pages loading live backend data, zero console errors). Email replacement is fully correct everywhere. THE TELEGRAM NOTIFICATION FEATURE IS COMPLETELY NON-FUNCTIONAL due to a dotenv load-order bug - no Telegram message is ever sent.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/bookings and POST /api/inquiries (backend/server.js:9-12 + backend/utils/telegram.js:1-2)",
+        "issue": "Telegram notifications NEVER send. server.js line 9 does `require('./utils/telegram')` BEFORE `dotenv.config()` on line 12. telegram.js captures TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID into module-level consts at import time, when they are still undefined, so every call short-circuits at the guard. Backend log proves it on every submission: 'Telegram notification skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set'. Verified the bot token itself IS valid (getMe -> ok:true, @curatorsafari_bot) and that dotenv does populate the vars when loaded first, so load order is the sole cause. FIX: either move `dotenv.config(...)` above all requires in server.js, or read process.env.TELEGRAM_* inside sendTelegramNotification() instead of at module scope (the latter is more robust).",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/bookings",
+        "issue": "Schema accepts per_person/total/nationality/zone but the frontend never sends them (see frontend issue below), so persisted bookings have total=null. Consider server-side price computation so revenue is authoritative and not client-trusted."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "SafariBooking.jsx (submitBooking, line ~139)",
+        "issue": "Booking payload omits per_person, total, nationality and zone. SAFARI_PRICES in lib/content.js defines indian/foreigner pricing per vehicle but it is never applied, and there is no zone or nationality selector anywhere in the 3-step flow. Consequence: every real UI booking is saved with total=null and blank zone, so Admin Overview 'Total Revenue' stays at Rs 0 and the Bookings table shows 'Rs 0' and an empty Zone for all UI-created bookings (reproduced: RTC-2026-42848 -> 'Canter Safari . Zone . 3g' / 'Rs 0'). Pre-existing, outside this change request's scope, but it makes the admin revenue KPI meaningless.",
+        "selector": "[data-testid=\"submit-booking\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Booking / Inquiry -> Telegram admin notification",
+        "issue": "User-facing flows all succeed and persist correctly (as designed, Telegram never blocks them), but the admin receives no Telegram message at all. Silent failure - only visible in backend logs. Same root cause as the CRITICAL backend issue.",
+        "affected_selectors": ["[data-testid=\"submit-booking\"]", "[data-testid=\"contact-submit\"]", "[data-testid=\"callback-submit\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Fix Telegram env load order - move `dotenv.config({path: ...})` to the very top of backend/server.js (above `require('./utils/telegram')`), OR read process.env.TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID inside sendTelegramNotification() rather than at module scope. Then re-submit a booking and confirm backend.out.log no longer prints 'Telegram notification skipped'.",
+    "MEDIUM (optional / pre-existing): Send per_person + total (and add zone/nationality selection) in the SafariBooking payload, or compute the total server-side, so Admin 'Total Revenue' is not permanently Rs 0."
+  ],
+  "critical_code_review_comments": [
+    "backend/utils/telegram.js reads env vars at module scope - this is fragile and is exactly what broke the feature. Read them inside the function so import order can never matter.",
+    "backend/server.js calls sendTelegramNotification() AFTER res.json(). This is correct for non-blocking, but any throw there would be an unhandled rejection on an already-sent response; the inner try/catch plus telegram.js never throwing does cover it - keep both.",
+    "backend/server.js is 758 lines with all routes + zod schemas inline; consider splitting into routes/ and schemas/ modules (>700 line guideline).",
+    "The Telegram guard uses console.error but the failure is otherwise completely silent to operators. Consider surfacing notification health on the admin dashboard or at startup (log once at boot if TELEGRAM_* are missing) so this class of bug is caught immediately.",
+    "SafariBooking client sends no monetary fields; if/when it does, do not trust client-supplied `total` - recompute server-side from vehicle + guests + nationality."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new - regression suite, 30 cases)"
+  ],
+  "success_rate": {"backend": "97% (29/30 - only the Telegram assertions fail)", "frontend": "100% of tested UI flows"},
+  "seed_data_creation": "Created TEST_-prefixed records via API and UI: bookings RTC-2026-42848 / 43531 / 82158 / 76332 (TEST_QA Booking, TEST_Telegram Booking, TEST_Status User, TEST_Booking User) and inquiries TEST_QA Callback, TEST_QA Playwright, TEST_Telegram Inquiry, TEST_hotel User, TEST_package User, TEST_contact User. There is no delete endpoint for bookings/inquiries so these remain in the DB and inflate admin counters; TEST_ review and TEST_Hotel created by the CRUD tests were cleaned up.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Admin PIN 73921846 via header X-Admin-Pin (works; /app/memory/test_credentials.md is an empty template - main agent should record the PIN there).",
+  "context_for_next_testing_agent": "Regression suite lives at /app/backend/tests/backend_test.py (run: cd /app/backend && python -m pytest tests/backend_test.py -v -p no:randomly). TestTelegramNotification::test_booking_triggers_telegram_without_skip_or_error and ::test_inquiry_... are the two red tests - they tail /var/log/supervisor/backend.out.log for 'Telegram notification skipped'/'failed' after a live submission and will go green the moment the dotenv order is fixed. Already verified and NOT worth re-testing: email replacement (old string absent from /app/backend, /app/frontend/src, /app/frontend/public and from rendered HTML of /, /contact, /packages, /hotels, /safari-booking; new email renders on Contact card + Footer), backend is Node-only (supervisor runs `node server.js`, zero .py in /app/backend apart from the test file, uvicorn on :8010 is the unrelated platform plugin server), no MongoDB _id leaks in any response, admin auth rejects missing/wrong PIN. Note stale FastAPI lines at the top of backend.err.log are pre-migration leftovers, not live errors.",
+  "rca_of_the_issue": "ROOT CAUSE (Telegram): Node evaluates `require()` statements eagerly and in order. backend/server.js requires './utils/telegram' on line 9, but only calls `dotenv.config({path: path.join(__dirname,'.env')})` on line 12. telegram.js binds `const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN` at module-evaluation time (line 1-2), i.e. three lines before the .env file is ever parsed, so both consts are permanently `undefined`. Every sendTelegramNotification() call therefore hits the `if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID)` guard, logs 'Telegram notification skipped' and returns without any HTTP request to Telegram. REPRODUCTION: POST any booking or inquiry (UI or curl) -> 200 OK and row saved in Mongo, then `tail /var/log/supervisor/backend.out.log` shows the skip line; no message arrives in chat 8871115463. PROOF: `node -e` in /app/backend prints 'BEFORE dotenv - TOKEN in env? false' / 'AFTER dotenv - TOKEN in env? true', and `curl https://api.telegram.org/bot<TOKEN>/getMe` returns ok:true for @curatorsafari_bot - so the credentials are valid and load order is the only defect. MITIGATION: hoist dotenv.config() above every require in server.js, and/or dereference process.env inside the function body in telegram.js."
+}
