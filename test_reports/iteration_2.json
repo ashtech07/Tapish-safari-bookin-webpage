@@ -1,0 +1,43 @@
+{
+  "summary": "Focused re-test of the two security fixes (FAQ JSON-LD + DOMPurify XSS hardening, sessionStorage -> httpOnly cookie admin auth) plus a full non-admin regression. Backend: 29/29 checks pass via a new Node-only suite (/app/backend/tests/api_test.js) - login sets rtc_admin_token with HttpOnly+Secure+SameSite=Strict, body is {ok:true} with no token, all 7 admin GETs are 401 without the cookie and 200 with it, sliding refresh works, logout clears the cookie, no _id leaks. Frontend: FAQ renders 12 questions, expand/collapse works, the FAQPage JSON-LD is still valid parseable JSON with all 12 Q&A (DOMPurify did not corrupt it), admin login->overview->all 7 dashboard pages->reload persistence->logout->401 all pass, document.cookie/sessionStorage/localStorage contain NO token, and public booking (RTC-2026-94367) + contact inquiry succeed. Zero .py files under /app, supervisor runs `node server.js`. Two real defects found: the cookie value is the literal ADMIN_PIN (no opaque token, logout is not server-side invalidating) and unhandled axios 401 rejections on admin pages raise a CRA runtime-error overlay that covers the login screen after logout.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/login (server.js:169-177)", "issue": "SECURITY: setAdminCookie() stores the raw ADMIN_PIN as the cookie value (verified: Set-Cookie: rtc_admin_token=73921846). The shared secret now travels in every request and lands in any proxy/CDN log or HAR capture; anyone who ever captures the cookie owns the PIN permanently. Also POST /api/admin/logout only clears the client cookie - a previously captured value still authenticates (test 'session after logout with old cookie value' returns 200). Recommend a random opaque/signed session token (crypto.randomBytes) with a server-side (Mongo) session record that logout deletes."},
+      {"endpoint": "global CORS (server.js:143-150) / backend/.env", "issue": "CORS_ORIGINS=\"*\" combined with credentials:true. Browsers reject credentialed requests against Access-Control-Allow-Origin: * - it only works today because the frontend is same-origin through the ingress. Set an explicit origin allowlist (REACT_APP_BACKEND_URL host) now that cookies are used."},
+      {"endpoint": "POST /api/admin/login rate limiter", "issue": "Server limiter is 10 attempts / 15 min per IP while the UI lockout is 3 / 10 min. Observed a 429 on the 3rd UI attempt during testing; behind a shared NAT/proxy IP a legitimate admin can be locked out by unrelated traffic. Consider aligning the windows and surfacing a distinct 'rate limited' message vs 'Incorrect PIN'."},
+      {"endpoint": "POST /api/bookings, POST /api/inquiries (utils/telegram.js)", "issue": "Out of scope for this session but still failing in backend.err.log: 'Telegram notification failed (400): Bad Request: chat not found' on every submission. The dotenv load-order bug from iteration 1 is fixed; TELEGRAM_CHAT_ID is now simply wrong/unreachable for the bot."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminOverview.jsx:32-41, AdminInquiries.jsx:30-34, AdminLiveFeed.jsx:28", "issue": "api.get() has no .catch/error state. When the session cookie is absent/expired (e.g. right after logout, when AdminLayout is still redirecting), the 401 becomes an unhandled promise rejection and CRA renders a full-screen 'Uncaught runtime errors: AxiosError Request failed with status code 401' overlay that completely covers the /admin login card (screenshot captured). Reproduce: login -> logout -> navigate directly to /admin/overview. Add try/catch + loading/error UI to every admin data fetch (or an axios response interceptor that redirects to /admin on 401).", "selector": "[data-testid=\"admin-pin-input\"] (obscured by the overlay)", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Contact page - EMAIL contact card", "issues": ["Email text is clipped/overflows the card: renders as 'theranthambhorecurator@gm' with the rest cut off at 1920px. Needs break-all/text-xs or a wider card."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/api_test.js", "/app/test_reports/pytest/node_api_results.json"],
+  "action_items": [
+    "SECURITY: stop using the ADMIN_PIN as the cookie value - issue a random opaque session token and invalidate it server-side on POST /api/admin/logout.",
+    "Set CORS_ORIGINS to an explicit origin (not '*') now that credentials:true cookies are in use.",
+    "Add .catch()/error+loading states to AdminOverview, AdminInquiries and AdminLiveFeed fetches (or a global axios 401 interceptor) so the CRA runtime-error overlay never covers the admin login screen.",
+    "Fix the Contact page EMAIL card text truncation.",
+    "Investigate the persistent Telegram 'chat not found' 400 (TELEGRAM_CHAT_ID) - pre-existing, not caused by this change."
+  ],
+  "critical_code_review_comments": [
+    "server.js:170 - res.cookie(ADMIN_COOKIE_NAME, ADMIN_PIN) makes the cookie value the secret itself; httpOnly stops JS reads but not network/log capture, and there is no server-side revocation.",
+    "FAQAccordion.jsx:46 - DOMPurify.sanitize() on a JSON string is verified harmless here (escapeJsonForScript already neutralises < > &, and the rendered JSON-LD parses with all 12 Q&A), but sanitize() is an HTML sanitizer, not a JSON one; the escape helper is what actually provides the protection. Keep both, but document that the escape is the real control.",
+    "server.js is 785 lines with all routes + zod schemas inline - exceeds the 700-line guideline; split into routes/ and schemas/.",
+    "AdminLayout polls /admin/session every 30s purely to slide the cookie; the cookie already slides on every authenticated request, so the poll is redundant traffic on data-heavy pages that already refresh every 30s."
+  ],
+  "updated_files": ["/app/backend/tests/api_test.js (new - Node-only regression suite, 29 checks, keeps the backend 100% JS)"],
+  "success_rate": {"backend": "100% (29/29 automated checks)", "frontend": "95% (all functional flows pass; 1 runtime-overlay bug + 1 truncation)"},
+  "seed_data_creation": "TEST_-prefixed rows created via API and UI: bookings RTC-2026-64460 (TEST_QA Cookie, x2 runs) and RTC-2026-94367 (TEST_QA UIFlow), plus 3 TEST_QA inquiries. No delete endpoint exists for bookings/inquiries so they remain and inflate admin counters.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Admin PIN 73921846 (from /app/memory/test_credentials.md). Note: that file still documents the old `X-Admin-Pin` header mechanism - update it to POST /api/admin/login + httpOnly rtc_admin_token cookie.",
+  "context_for_next_testing_agent": "Run the Node regression suite with `node /app/backend/tests/api_test.js` (writes /app/test_reports/pytest/node_api_results.json; do NOT add Python files - the app is intentionally 100% Node). Beware: /api/admin/login is rate limited to 10 attempts / 15 min per IP; the suite spends 3 per run, so a failed-PIN UI test right after a suite run can return 429 instead of 401 (UI behaviour is identical). Already verified this iteration and not worth repeating: FAQ JSON-LD integrity, cookie flags, all admin page loads, reload persistence, logout invalidation, public booking + contact flows, zero .py files, node server.js under supervisor.",
+  "rca_of_the_issue": "CRA overlay bug: AdminOverview/AdminInquiries/AdminLiveFeed call api.get('/admin/*') inside useEffect + a 30s setInterval with no catch. AdminLayout's own session check redirects to /admin on 401, but the sibling page component's fetch has already been dispatched and rejects afterwards; the unhandled AxiosError triggers react-error-overlay, which paints over the login card. Fix at the source with per-call error handling or a single axios response interceptor that swallows 401 and routes to /admin."
+}

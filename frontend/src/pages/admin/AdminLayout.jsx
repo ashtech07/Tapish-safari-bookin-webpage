@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, CalendarDays, MessageSquare, Activity, LogOut, DollarSign, Star, ImageIcon, Hotel } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 const NAV = [
   { to: "/admin/overview", label: "Overview", icon: LayoutDashboard },
@@ -13,41 +14,36 @@ const NAV = [
   { to: "/admin/live-feed", label: "Live Feed", icon: Activity },
 ];
 
-const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const SESSION_CHECK_INTERVAL_MS = 30000;
 
 export default function AdminLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = sessionStorage.getItem("rtc_admin_token");
-    if (!token) {
-      navigate("/admin", { replace: true });
-      return;
-    }
-    // session expiry
-    let lastTouch = Number(sessionStorage.getItem("rtc_admin_touch") || Date.now());
-    sessionStorage.setItem("rtc_admin_touch", String(Date.now()));
+    // The admin token lives in an httpOnly cookie, invisible to JS. Verify
+    // the session with the backend on mount, then keep polling — every
+    // successful call also slides the cookie's expiry server-side.
+    let cancelled = false;
+    api.get("/admin/session").catch(() => {
+      if (!cancelled) navigate("/admin", { replace: true });
+    });
     const interval = setInterval(() => {
-      const touched = Number(sessionStorage.getItem("rtc_admin_touch") || 0);
-      if (Date.now() - touched > SESSION_TIMEOUT_MS) {
-        sessionStorage.removeItem("rtc_admin_token");
-        sessionStorage.removeItem("rtc_admin_touch");
-        navigate("/admin", { replace: true });
-      }
-    }, 30000);
-    const handler = () => sessionStorage.setItem("rtc_admin_touch", String(Date.now()));
-    window.addEventListener("click", handler);
-    window.addEventListener("keydown", handler);
+      api.get("/admin/session").catch(() => {
+        if (!cancelled) navigate("/admin", { replace: true });
+      });
+    }, SESSION_CHECK_INTERVAL_MS);
     return () => {
+      cancelled = true;
       clearInterval(interval);
-      window.removeEventListener("click", handler);
-      window.removeEventListener("keydown", handler);
     };
   }, [navigate]);
 
-  function logout() {
-    sessionStorage.removeItem("rtc_admin_token");
-    sessionStorage.removeItem("rtc_admin_touch");
+  async function logout() {
+    try {
+      await api.post("/admin/logout");
+    } catch {
+      // Ignore network errors — still navigate away from the admin area.
+    }
     navigate("/admin", { replace: true });
   }
 

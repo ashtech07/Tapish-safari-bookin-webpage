@@ -1,6 +1,7 @@
 const express = require('express');
 const { MongoClient } = require('mongodb');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const path = require('path');
 const { z } = require('zod');
@@ -17,6 +18,8 @@ const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = process.env.DB_NAME;
 const ADMIN_PIN = process.env.ADMIN_PIN;
 const CORS_ORIGINS = process.env.CORS_ORIGINS || '*';
+const ADMIN_COOKIE_NAME = 'rtc_admin_token';
+const ADMIN_COOKIE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 if (!MONGO_URL) {
   console.error('ERROR: MONGO_URL environment variable is required');
@@ -135,13 +138,14 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(cookieParser());
 
 // CORS configuration
 const corsOptions = {
   origin: CORS_ORIGINS === '*' ? '*' : CORS_ORIGINS.split(',').map(o => o.trim()),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Pin']
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
 
@@ -162,11 +166,23 @@ async function connectToMongoDB() {
 }
 
 // ============ MIDDLEWARE ============
+function setAdminCookie(res) {
+  res.cookie(ADMIN_COOKIE_NAME, ADMIN_PIN, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: ADMIN_COOKIE_MAX_AGE_MS,
+    path: '/'
+  });
+}
+
 function requireAdmin(req, res, next) {
-  const adminPin = req.headers['x-admin-pin'];
-  if (!adminPin || adminPin !== ADMIN_PIN) {
+  const adminToken = req.cookies ? req.cookies[ADMIN_COOKIE_NAME] : undefined;
+  if (!adminToken || !pinsMatch(adminToken, ADMIN_PIN)) {
     return res.status(401).json({ detail: 'Unauthorized' });
   }
+  // Sliding session: refresh cookie expiry on every authenticated request.
+  setAdminCookie(res);
   next();
 }
 
@@ -349,13 +365,23 @@ app.post('/api/admin/login', adminLoginLimiter, validateBody(AdminLoginSchema), 
   try {
     const { pin } = req.body;
     if (pinsMatch(pin, ADMIN_PIN)) {
-      return res.json({ ok: true, token: ADMIN_PIN });
+      setAdminCookie(res);
+      return res.json({ ok: true });
     }
     res.status(401).json({ detail: 'Incorrect PIN' });
   } catch (error) {
     console.error('Error in admin login:', error);
     res.status(500).json({ detail: 'Internal server error' });
   }
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  res.clearCookie(ADMIN_COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'strict', path: '/' });
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/session', requireAdmin, (req, res) => {
+  res.json({ ok: true });
 });
 
 // ---- Admin Stats ----

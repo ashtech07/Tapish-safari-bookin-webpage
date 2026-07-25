@@ -3,17 +3,10 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API });
-
-// Admin auth: read PIN token from sessionStorage and inject as header
-api.interceptors.request.use((cfg) => {
-  const token = sessionStorage.getItem("rtc_admin_token");
-  if (token && cfg.url && cfg.url.startsWith("/admin")) {
-    cfg.headers = cfg.headers || {};
-    cfg.headers["X-Admin-Pin"] = token;
-  }
-  return cfg;
-});
+// Admin auth token now lives in an httpOnly cookie set by the backend;
+// the browser attaches it automatically as long as requests are sent
+// with credentials.
+export const api = axios.create({ baseURL: API, withCredentials: true });
 
 export const WHATSAPP_NUMBER = "917014404093";
 export const WHATSAPP_DISPLAY = "+91 70144 04093";

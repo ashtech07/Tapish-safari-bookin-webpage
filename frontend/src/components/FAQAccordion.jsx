@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { FAQS } from "@/lib/content";
 
@@ -42,7 +43,7 @@ export default function FAQAccordion() {
       </Accordion>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: escapeJsonForScript(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(escapeJsonForScript(faqSchema)) }}
       />
     </div>
   );

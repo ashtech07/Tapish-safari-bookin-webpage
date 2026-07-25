@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 const LOCK_KEY = "rtc_admin_lock_until";
 const FAIL_KEY = "rtc_admin_fails";
-const TOKEN_KEY = "rtc_admin_token";
 const LOCKOUT_MS = 10 * 60 * 1000;
 const MAX_FAILS = 3;
 
@@ -24,9 +23,11 @@ export default function AdminLogin() {
       if (t > Date.now()) setLockedUntil(t);
       else sessionStorage.removeItem(LOCK_KEY);
     }
-    if (sessionStorage.getItem(TOKEN_KEY)) {
+    // The admin token now lives in an httpOnly cookie we can't read from JS,
+    // so ask the backend whether the current session cookie is still valid.
+    api.get("/admin/session").then(() => {
       navigate("/admin/overview", { replace: true });
-    }
+    }).catch(() => {});
   }, [navigate]);
 
   useEffect(() => {
@@ -39,8 +40,7 @@ export default function AdminLogin() {
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.post("/admin/login", { pin });
-      sessionStorage.setItem(TOKEN_KEY, data.token);
+      await api.post("/admin/login", { pin });
       sessionStorage.removeItem(FAIL_KEY);
       toast.success("Welcome back.");
       navigate("/admin/overview", { replace: true });

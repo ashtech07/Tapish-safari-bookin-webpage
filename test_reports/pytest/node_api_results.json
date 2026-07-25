@@ -1,0 +1,147 @@
+[
+  {
+    "name": "GET /api/ health",
+    "ok": true,
+    "detail": "{\"message\":\"Ranthambore Safari Curator API\",\"status\":\"ok\"}"
+  },
+  {
+    "name": "GET /admin/session without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/stats without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/bookings without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/inquiries without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/reviews without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/hotels without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/live-feed without cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /api/admin/session with stale/forged cookie -> 401",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "POST /api/admin/login wrong PIN -> 401, no Set-Cookie",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "POST /api/admin/login malformed body -> 422",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "POST /api/admin/login sets HttpOnly+Secure+SameSite=Strict cookie, no token in body",
+    "ok": true,
+    "detail": "rtc_admin_token=73921846; Max-Age=7200; Path=/; Expires=Sat, 25 Jul 2026 12:17:25 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=ks9bwJTxSg02uko6rkm2TDcYAa1.XUO3qkSwrWfcxXc-1784974645.62814-1.0.1.1-fq28THefZbE.tfZaRgn_YFMXhJtOO6dVWvrWmflodRxSKuDdMYuoBAk5FY.BMhNaoYmQ3uxDxo9wNHKwL1gz_AkQ5bKu0qs9WUtU_qvHg1CrHgwprRLdXtdQQk6g_9zj; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:47:25 GMT"
+  },
+  {
+    "name": "GET /api/admin/session with cookie -> 200 {ok:true} and slides cookie",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /admin/stats with cookie -> 200",
+    "ok": true,
+    "detail": "ok"
+  },
+  {
+    "name": "GET /admin/bookings with cookie -> 200",
+    "ok": true,
+    "detail": "5 rows"
+  },
+  {
+    "name": "GET /admin/inquiries with cookie -> 200",
+    "ok": true,
+    "detail": "11 rows"
+  },
+  {
+    "name": "GET /admin/reviews with cookie -> 200",
+    "ok": true,
+    "detail": "0 rows"
+  },
+  {
+    "name": "GET /admin/hotels with cookie -> 200",
+    "ok": true,
+    "detail": "0 rows"
+  },
+  {
+    "name": "GET /admin/live-feed with cookie -> 200",
+    "ok": true,
+    "detail": "ok"
+  },
+  {
+    "name": "POST /api/bookings (public) -> 200 with booking_ref",
+    "ok": true,
+    "detail": "RTC-2026-64460"
+  },
+  {
+    "name": "New booking is visible in GET /api/admin/bookings",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "POST /api/inquiries (public) -> success",
+    "ok": true,
+    "detail": "{\"id\":\"e6c5f8e1-2b5a-4060-ab7d-51de5a464081\",\"created_at\":\"2026-07-25T10:17:26.106Z\",\"type\":\"contact\",\"name\":\"TEST_QA Co"
+  },
+  {
+    "name": "POST /api/bookings validation error -> 422",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /reviews (public) -> 200",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /hotels (public) -> 200",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GET /images (public) -> 200",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "POST /api/admin/logout clears cookie",
+    "ok": true,
+    "detail": "rtc_admin_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict, __cf_bm=IjPgWn.kIWMhBxz2YIEk8YjPaDpzu5b5qgfTXix9AbY-1784974646.3048725-1.0.1.1-a3G.ZcfFGOuiZdJxyM4dGYroXBkPGTKAwyFkdc4DXWIayrBvG.jEl1IbyaY5tX6H4Evtxv0SwVHhHl20mKVqPAh.994HkS9mTo0z.3W1w6QsPtcYGpP67n887NST4Vh7; HttpOnly; SameSite=None; Secure; Path=/; Domain=preview.emergentagent.com; Expires=Sat, 25 Jul 2026 10:47:26 GMT"
+  },
+  {
+    "name": "GET /api/admin/session after logout with old cookie value",
+    "ok": true,
+    "detail": "status 200 (browser would have discarded the cookie)"
+  },
+  {
+    "name": "No .py files under /app/backend",
+    "ok": true,
+    "detail": ""
+  }
+]
