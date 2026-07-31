@@ -193,13 +193,10 @@ function destroyAdminSession(token) {
 }
 
 function setAdminCookie(res, token) {
-  res.cookie(ADMIN_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'strict',
-    maxAge: ADMIN_COOKIE_MAX_AGE_MS,
-    path: '/'
-  });
+  const maxAgeSeconds = Math.floor(ADMIN_COOKIE_MAX_AGE_MS / 1000);
+  res.append('Set-Cookie',
+    `${ADMIN_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=${maxAgeSeconds}; Path=/`
+  );
 }
 
 function requireAdmin(req, res, next) {
@@ -405,7 +402,9 @@ app.post('/api/admin/login', adminLoginLimiter, validateBody(AdminLoginSchema), 
 app.post('/api/admin/logout', (req, res) => {
   const token = req.cookies ? req.cookies[ADMIN_COOKIE_NAME] : undefined;
   if (token) destroyAdminSession(token);
-  res.clearCookie(ADMIN_COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'strict', path: '/' });
+  res.append('Set-Cookie',
+    `${ADMIN_COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=0; Path=/`
+  );
   res.json({ ok: true });
 });
 
